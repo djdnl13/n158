@@ -93,8 +93,36 @@ httpServers:
                             -   handler: '$demo-handler'
 ```
 
-Built-in server behavior: gzip compression, JSON (100kb limit, body-parser's default) and
-urlencoded bodies, cookies, `morgan('dev')` request logging, `Access-Control-Allow-Origin: *`
+### Body size limits
+
+Each server in `httpServers` can set its own body-parser limits. Without `bodyParser` the
+limit is 100kb (body-parser's default) for both JSON and urlencoded bodies; larger requests get
+`413 Payload Too Large`.
+
+```yaml
+vars:
+    jsonLimit: '1mb'
+
+httpServers:
+    -   name: 'server'
+        ports:
+            http: 8000
+        bodyParser:
+            json:
+                limit: '$jsonLimit'   # $vars work here too
+            urlencoded:
+                limit: '200kb'
+        routers: [...]
+```
+
+`limit` is a number of bytes or a number followed by `b`, `kb`, `mb` or `gb` (`'500kb'`,
+`'1.5mb'`). Anything else stops the server from starting, because body-parser would read
+some typos as bytes (`'1 megabyte'` becomes 1 byte). If `limit` points to a `$var` that isn't
+set, the 100kb default applies. Other keys under `json` / `urlencoded` are passed to
+body-parser as they are.
+
+Built-in server behavior: gzip compression, JSON and urlencoded bodies (100kb unless set as
+above), cookies, `morgan('dev')` request logging, `Access-Control-Allow-Origin: *`
 on every response, `OPTIONS` answered with `200 OK`, and no `X-Powered-By` header.
 
 ### Known limitations
@@ -138,5 +166,7 @@ npm run compile    # src/resources -> classes/, services/, http-pipeline-handler
   versions). Declare `express`, which the library always required. All versions are pinned.
 - Build with Babel 7 targeting Node 14 (classes still compiled to ES5).
 - Add `npm test` and CI.
+- Add `bodyParser.json` / `bodyParser.urlencoded` per server in the settings to set body size
+  limits (default unchanged: 100kb).
 - Remove the unused `services/connectMySQL.js`, which required `mysql`, a package that wasn't
   a dependency.
