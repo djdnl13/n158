@@ -1,0 +1,42 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['14']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - run: npm ci
+
+      # The compiled files (classes/, services/, http-pipeline-handlers/) are committed and
+      # are what consumers load. Fail if they are out of date with src/resources.
+      # Linux only: Windows checkouts convert line endings, which would show up as a diff.
+      - name: compiled output matches src/resources
+        if: runner.os == 'Linux'
+        run: |
+          npm run compile
+          if [ -n "$(git status --porcelain -- classes services http-pipeline-handlers)" ]; then
+            echo "::error::Compiled files are stale. Run 'npm run compile' and commit the result."
+            git status --short -- classes services http-pipeline-handlers
+            git diff --stat -- classes services http-pipeline-handlers
+            exit 1
+          fi
+
+      - run: npm test
