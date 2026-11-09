@@ -6,6 +6,7 @@ var assert = require('assert');
 var http = require('http');
 var ProcessHandler = require('../classes').ProcessHandler;
 var MongoModel = require('../classes').MongoModel;
+var ExpressServer = require('../classes').ExpressServer;
 var modelMongoTransaction = require('../http-pipeline-handlers').modelMongoTransaction;
 var deferResponse = require('../services').deferResponse;
 
@@ -71,11 +72,12 @@ var settings = {
 };
 
 var port;
-function request (method, path, body, headers) {
+var bigPort; // server from test/body-limit.settings.yaml
+function request (method, path, body, headers, toPort) {
     return new Promise(function (resolve, reject) {
         var data = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
         var h = Object.assign(data !== undefined ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } : {}, headers || {});
-        var r = http.request({ host: '127.0.0.1', port: port, method: method, path: path, headers: h }, function (res) {
+        var r = http.request({ host: '127.0.0.1', port: toPort || port, method: method, path: path, headers: h }, function (res) {
             var buf = '';
             res.on('data', function (c) { buf += c; });
             res.on('end', function () {
@@ -138,6 +140,33 @@ var cases = [
         var r = await request('POST', '/api/body', { s: 'a'.repeat(101 * 1024) });
         assert.strictEqual(r.status, 413);
     }],
+    ['settings.yaml bodyParser.json.limit ($var) raises the JSON limit', async function () {
+        var ok = await request('POST', '/api/body', { s: 'a'.repeat(900 * 1024) }, undefined, bigPort);
+        assert.strictEqual(ok.status, 201);
+        var tooBig = await request('POST', '/api/body', { s: 'a'.repeat(1025 * 1024) }, undefined, bigPort);
+        assert.strictEqual(tooBig.status, 413);
+    }],
+    ['settings.yaml bodyParser.urlencoded.limit raises the urlencoded limit', async function () {
+        var form = function (n) { return 's=' + 'a'.repeat(n); };
+        var h = function (b) { return { 'content-type': 'application/x-www-form-urlencoded', 'content-length': Buffer.byteLength(b) }; };
+        var ok = form(150 * 1024);
+        assert.strictEqual((await request('POST', '/api/body', ok, h(ok), bigPort)).status, 201);
+        assert.strictEqual((await request('POST', '/api/body', ok, h(ok))).status, 413); // default server: 100kb
+        var tooBig = form(201 * 1024);
+        assert.strictEqual((await request('POST', '/api/body', tooBig, h(tooBig), bigPort)).status, 413);
+    }],
+    ['an invalid bodyParser limit fails at startup (body-parser would read "1 megabyte" as 1 byte)', async function () {
+        [['json', '1 megabyte'], ['json', 'lots'], ['urlencoded', '10 MB!'], ['json', -1]].forEach(function (c) {
+            var bp = {}; bp[c[0]] = { limit: c[1] };
+            var bad = new ProcessHandler({ httpServers: [{ name: 'bad', ports: { http: 0 }, bodyParser: bp, routers: [] }] });
+            assert.throws(function () { bad.startHTTPServers(); }, new RegExp('invalid bodyParser\\.' + c[0] + '\\.limit'), JSON.stringify(c));
+        });
+        // limit: with no value in YAML is null (ProcessHandler can't resolve null settings, so check the class)
+        assert.throws(function () { new ExpressServer({ bodyParser: { json: { limit: null } } }); }, /invalid bodyParser\.json\.limit null/);
+        ['2mb', '1.5MB', '500 kb', 1048576].forEach(function (l) {
+            assert.doesNotThrow(function () { new ExpressServer({ bodyParser: { json: { limit: l } } }); }, String(l));
+        });
+    }],
     ['urlencoded bodies are parsed', async function () {
         var r = await request('POST', '/api/body', 'a=1&b=2', { 'content-type': 'application/x-www-form-urlencoded', 'content-length': 7 });
         assert.strictEqual(r.status, 201);
@@ -178,6 +207,11 @@ var cases = [
     await ph.startHTTPServers();
     port = ph.httpServersMap.api.server.httpServer.address().port;
 
+    var big = new ProcessHandler(require('path').join(__dirname, 'body-limit.settings.yaml'));
+    big.set('body-length', function (ctx, next) { next(201, { len: JSON.stringify(ctx.req.body).length }); });
+    await big.startHTTPServers();
+    bigPort = big.httpServersMap.big.server.httpServer.address().port;
+
     var passed = 0;
     for (var i = 0; i < cases.length; i++) {
         try {
@@ -192,6 +226,7 @@ var cases = [
     }
     console.log(passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));
     ph.httpServersMap.api.server.httpServer.close();
+    big.httpServersMap.big.server.httpServer.close();
 })().catch(function (err) {
     console.error(err);
     process.exit(1);

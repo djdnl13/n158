@@ -109,7 +109,9 @@ let ProcessHandler = exports.ProcessHandler = /*#__PURE__*/function () {
     key: "_attachHTTPServer",
     value: function _attachHTTPServer(name, serverSettings) {
       // Init server
-      var server = new _ExpressServer.ExpressServer();
+      var server = new _ExpressServer.ExpressServer({
+        bodyParser: serverSettings.bodyParser
+      });
       this.httpServersMap[name] = {};
       this.httpServersMap[name].settings = serverSettings;
       this.httpServersMap[name].server = server;

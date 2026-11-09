@@ -9,13 +9,31 @@ import fs from 'fs';
 import path from 'path';
 import q from 'q';
 
+// body-parser silently reads some typos as bytes ('1 megabyte' -> 1 byte), so check limits
+// here: a number of bytes, or a number followed by b, kb, mb or gb ('500kb', '1.5mb').
+var LIMIT = /^\d+(\.\d+)?\s*(b|kb|mb|gb)$/i;
+function checkLimit (name, opts) {
+    if (!opts || opts.limit === undefined) return;
+    var l = opts.limit;
+    if (!(typeof l === 'number' && l >= 0) && !(typeof l === 'string' && LIMIT.test(l))) {
+        throw new Error('n158 => ExpressServer: invalid bodyParser.' + name + '.limit ' + JSON.stringify(l) +
+            " (use bytes or a size like '500kb', '1mb')");
+    }
+}
+
 export class ExpressServer {
     
-    constructor () {
+    // options.bodyParser.json / options.bodyParser.urlencoded are passed to body-parser
+    // (e.g. { limit: '1mb' }). Without them the defaults are unchanged: 100kb limits and
+    // urlencoded extended: false. An invalid limit throws here, at startup.
+    constructor (options) {
+        var bodyParserOptions = (options && options.bodyParser) || {};
+        checkLimit('json', bodyParserOptions.json);
+        checkLimit('urlencoded', bodyParserOptions.urlencoded);
         this.app = express();
         this.app.use(compression());
-        this.app.use(bodyParser.urlencoded({ extended: false }));
-        this.app.use(bodyParser.json());
+        this.app.use(bodyParser.urlencoded(Object.assign({ extended: false }, bodyParserOptions.urlencoded)));
+        this.app.use(bodyParser.json(Object.assign({}, bodyParserOptions.json)));
         this.app.use(cookieParser());
         this.app.disable('x-powered-by');
         this.app.use(morgan('dev'));

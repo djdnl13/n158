@@ -20,15 +20,31 @@ function _defineProperties(e, r) { for (var t = 0; t < r.length; t++) { var o = 
 function _createClass(e, r, t) { return r && _defineProperties(e.prototype, r), t && _defineProperties(e, t), Object.defineProperty(e, "prototype", { writable: !1 }), e; }
 function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == typeof i ? i : i + ""; }
 function _toPrimitive(t, e) { if ("object" != typeof t || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != typeof i) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
+// body-parser silently reads some typos as bytes ('1 megabyte' -> 1 byte), so check limits
+// here: a number of bytes, or a number followed by b, kb, mb or gb ('500kb', '1.5mb').
+var LIMIT = /^\d+(\.\d+)?\s*(b|kb|mb|gb)$/i;
+function checkLimit(name, opts) {
+  if (!opts || opts.limit === undefined) return;
+  var l = opts.limit;
+  if (!(typeof l === 'number' && l >= 0) && !(typeof l === 'string' && LIMIT.test(l))) {
+    throw new Error('n158 => ExpressServer: invalid bodyParser.' + name + '.limit ' + JSON.stringify(l) + " (use bytes or a size like '500kb', '1mb')");
+  }
+}
 let ExpressServer = exports.ExpressServer = /*#__PURE__*/function () {
-  function ExpressServer() {
+  // options.bodyParser.json / options.bodyParser.urlencoded are passed to body-parser
+  // (e.g. { limit: '1mb' }). Without them the defaults are unchanged: 100kb limits and
+  // urlencoded extended: false. An invalid limit throws here, at startup.
+  function ExpressServer(options) {
     _classCallCheck(this, ExpressServer);
+    var bodyParserOptions = options && options.bodyParser || {};
+    checkLimit('json', bodyParserOptions.json);
+    checkLimit('urlencoded', bodyParserOptions.urlencoded);
     this.app = (0, _express.default)();
     this.app.use((0, _compression.default)());
-    this.app.use(_bodyParser.default.urlencoded({
+    this.app.use(_bodyParser.default.urlencoded(Object.assign({
       extended: false
-    }));
-    this.app.use(_bodyParser.default.json());
+    }, bodyParserOptions.urlencoded)));
+    this.app.use(_bodyParser.default.json(Object.assign({}, bodyParserOptions.json)));
     this.app.use((0, _cookieParser.default)());
     this.app.disable('x-powered-by');
     this.app.use((0, _morgan.default)('dev'));
