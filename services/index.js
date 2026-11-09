@@ -1,20 +1,21 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.connectMongoDb = exports.deferResponse = undefined;
-
-var _deferResponse = require('./deferResponse');
-
-var _deferResponse2 = _interopRequireDefault(_deferResponse);
-
-var _connectMongoDb = require('./connectMongoDb');
-
-var _connectMongoDb2 = _interopRequireDefault(_connectMongoDb);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-exports.deferResponse = _deferResponse2.default;
-exports.connectMongoDb = _connectMongoDb2.default;
+Object.defineProperty(exports, "connectMongoDb", {
+  enumerable: true,
+  get: function () {
+    return _connectMongoDb.default;
+  }
+});
+Object.defineProperty(exports, "deferResponse", {
+  enumerable: true,
+  get: function () {
+    return _deferResponse.default;
+  }
+});
+var _deferResponse = _interopRequireDefault(require("./deferResponse"));
+var _connectMongoDb = _interopRequireDefault(require("./connectMongoDb"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
 //# sourceMappingURL=index.js.map
