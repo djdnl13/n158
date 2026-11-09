@@ -30,15 +30,53 @@ function checkLimit(name, opts) {
     throw new Error('n158 => ExpressServer: invalid bodyParser.' + name + '.limit ' + JSON.stringify(l) + " (use bytes or a size like '500kb', '1mb')");
   }
 }
+
+// Request logging. options.logger:
+//   omitted          -> morgan('dev'), as before
+//   false            -> no request log
+//   { format, timestamp }
+//     format: 'dev' (default), 'combined', 'common', 'short', 'tiny', or a custom morgan
+//             format string (must contain a :token, e.g. ':start-utc :method :url :status')
+//     timestamp: true prefixes each line with the request start time in UTC, ISO 8601:
+//             [2026-11-09T21:48:03.512Z] GET /api/x 200 4.123 ms - 15
+var LOG_FORMATS = ['combined', 'common', 'dev', 'short', 'tiny'];
+// morgan records req._startTime (a Date) when the request reaches its middleware.
+_morgan.default.token('start-utc', function (req) {
+  return req._startTime ? req._startTime.toISOString() : '-';
+});
+function createLogger(opts) {
+  if (opts === false) return null;
+  if (opts === undefined || opts === true) opts = {};
+  if (typeof opts !== 'object' || Array.isArray(opts)) {
+    throw new Error('n158 => ExpressServer: invalid logger ' + JSON.stringify(opts) + ' (use false or { format, timestamp })');
+  }
+  var format = opts.format === undefined ? 'dev' : opts.format;
+  // A typo such as 'combind' would otherwise be printed literally as every log line.
+  if (typeof format !== 'string' || LOG_FORMATS.indexOf(format) === -1 && format.indexOf(':') === -1) {
+    throw new Error('n158 => ExpressServer: invalid logger.format ' + JSON.stringify(format) + ' (use ' + LOG_FORMATS.join(', ') + ' or a format string with :tokens)');
+  }
+  if (opts.timestamp !== undefined && typeof opts.timestamp !== 'boolean') {
+    throw new Error('n158 => ExpressServer: invalid logger.timestamp ' + JSON.stringify(opts.timestamp) + ' (use true or false)');
+  }
+  if (!opts.timestamp) return (0, _morgan.default)(format);
+  var named = LOG_FORMATS.indexOf(format) !== -1 ? _morgan.default[format] : format;
+  var line = typeof named === 'function' ? named : _morgan.default.compile(named);
+  return (0, _morgan.default)(function (tokens, req, res) {
+    var l = line(tokens, req, res);
+    return l == null ? l : '[' + tokens['start-utc'](req, res) + '] ' + l;
+  });
+}
 let ExpressServer = exports.ExpressServer = /*#__PURE__*/function () {
   // options.bodyParser.json / options.bodyParser.urlencoded are passed to body-parser
   // (e.g. { limit: '1mb' }). Without them the defaults are unchanged: 100kb limits and
   // urlencoded extended: false. An invalid limit throws here, at startup.
+  // options.logger: see createLogger above.
   function ExpressServer(options) {
     _classCallCheck(this, ExpressServer);
     var bodyParserOptions = options && options.bodyParser || {};
     checkLimit('json', bodyParserOptions.json);
     checkLimit('urlencoded', bodyParserOptions.urlencoded);
+    var logger = createLogger(options ? options.logger : undefined);
     this.app = (0, _express.default)();
     this.app.use((0, _compression.default)());
     this.app.use(_bodyParser.default.urlencoded(Object.assign({
@@ -47,7 +85,7 @@ let ExpressServer = exports.ExpressServer = /*#__PURE__*/function () {
     this.app.use(_bodyParser.default.json(Object.assign({}, bodyParserOptions.json)));
     this.app.use((0, _cookieParser.default)());
     this.app.disable('x-powered-by');
-    this.app.use((0, _morgan.default)('dev'));
+    if (logger) this.app.use(logger);
     this.app.use(function (req, res, next) {
       req.startTimestamp = Date.now();
       res.header('Access-Control-Allow-Origin', '*');

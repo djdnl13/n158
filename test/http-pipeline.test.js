@@ -73,6 +73,27 @@ var settings = {
 
 var port;
 var bigPort; // server from test/body-limit.settings.yaml
+var logPorts = {}; // servers with logger settings (see logSettings)
+var logLines = []; // request log lines captured from stdout
+function wait (ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function logLineFor (url) {
+    return logLines.filter(function (l) { return l.indexOf(url + ' ') !== -1 || l.trim().slice(-url.length) === url; });
+}
+var ISO_UTC = '(\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\.\\d{3}Z)';
+
+function logServer (name, logger) {
+    var srv = { name: name, ports: { http: 0 }, routers: [{ name: 'r', path: '/api', routes: [
+        { method: 'GET', path: '/log-' + name, pipeline: [{ handler: function (ctx, next, finish) { finish(200, { ok: 1 }); } }] }
+    ] }] };
+    if (logger !== undefined) srv.logger = logger;
+    return srv;
+}
+var logSettings = { httpServers: [
+    logServer('tiny', { format: 'tiny', timestamp: true }),
+    logServer('dev', { timestamp: true }),
+    logServer('custom', { format: ':start-utc :method :url' }),
+    logServer('off', false)
+] };
 function request (method, path, body, headers, toPort) {
     return new Promise(function (resolve, reject) {
         var data = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
@@ -191,14 +212,67 @@ var cases = [
     ['unknown route -> 404', async function () {
         var r = await request('GET', '/api/unknown-route');
         assert.strictEqual(r.status, 404);
+    }],
+    ['default logger is unchanged: morgan dev, no timestamp', async function () {
+        var lines = logLineFor('/api/echo/42?x=1&y=2');
+        assert.strictEqual(lines.length, 1, JSON.stringify(logLines));
+        assert.ok(/^\u001b\[0mGET \/api\/echo\/42\?x=1&y=2 /.test(lines[0]), JSON.stringify(lines[0]));
+    }],
+    ['logger.timestamp prefixes the request start time in UTC (ISO 8601)', async function () {
+        var before = Date.now();
+        await request('GET', '/api/log-tiny', undefined, undefined, logPorts.tiny);
+        var after = Date.now();
+        await wait(50); // morgan writes when the response finishes
+        var lines = logLineFor('/api/log-tiny');
+        assert.strictEqual(lines.length, 1, JSON.stringify(logLines));
+        var m = new RegExp('^\\[' + ISO_UTC + '\\] GET /api/log-tiny 200 ').exec(lines[0]);
+        assert.ok(m, JSON.stringify(lines[0]));
+        var t = Date.parse(m[1]);
+        assert.ok(t >= before && t <= after, m[1] + ' not between ' + new Date(before).toISOString() + ' and ' + new Date(after).toISOString());
+    }],
+    ['logger.timestamp works with the default dev format', async function () {
+        await request('GET', '/api/log-dev', undefined, undefined, logPorts.dev);
+        await wait(50);
+        var lines = logLineFor('/api/log-dev');
+        assert.strictEqual(lines.length, 1, JSON.stringify(logLines));
+        assert.ok(new RegExp('^\\[' + ISO_UTC + '\\] \\u001b\\[0mGET /api/log-dev ').test(lines[0]), JSON.stringify(lines[0]));
+    }],
+    ['custom logger.format can use the :start-utc token', async function () {
+        await request('GET', '/api/log-custom', undefined, undefined, logPorts.custom);
+        await wait(50);
+        var lines = logLineFor('/api/log-custom');
+        assert.strictEqual(lines.length, 1, JSON.stringify(logLines));
+        assert.ok(new RegExp('^' + ISO_UTC + ' GET /api/log-custom\\n$').test(lines[0]), JSON.stringify(lines[0]));
+    }],
+    ['logger: false logs nothing', async function () {
+        var r = await request('GET', '/api/log-off', undefined, undefined, logPorts.off);
+        assert.strictEqual(r.status, 200);
+        await wait(50);
+        assert.deepStrictEqual(logLineFor('/api/log-off'), []);
+    }],
+    ['an invalid logger setting fails at startup', async function () {
+        [['dev', /invalid logger "dev"/], [{ format: 'combind' }, /invalid logger\.format "combind"/],
+            [{ format: 42 }, /invalid logger\.format 42/], [{ timestamp: 'yes' }, /invalid logger\.timestamp "yes"/]
+        ].forEach(function (c) {
+            assert.throws(function () { new ExpressServer({ logger: c[0] }); }, c[1], JSON.stringify(c[0]));
+        });
+        ['combined', 'common', 'short', 'tiny', 'dev'].forEach(function (f) {
+            assert.doesNotThrow(function () { new ExpressServer({ logger: { format: f, timestamp: true } }); }, f);
+        });
     }]
 ];
 
 (async function () {
-    // morgan('dev') logs every request to stdout; keep the test output readable.
+    // morgan logs every request to stdout: capture those lines (checked by the logger tests)
+    // and keep the test output readable.
     var write = process.stdout.write.bind(process.stdout);
     process.stdout.write = function (chunk) {
-        if (/^\u001b\[0m(GET|POST|OPTIONS|PUT|DELETE) /.test(String(chunk))) return true;
+        var line = String(chunk);
+        if (/^(\[[^\]]+\] )?\u001b\[0m(GET|POST|OPTIONS|PUT|DELETE) /.test(line) ||
+            /^\[?\d{4}-\d\d-\d\dT/.test(line)) {
+            logLines.push(line);
+            return true;
+        }
         return write.apply(null, arguments);
     };
 
@@ -211,6 +285,10 @@ var cases = [
     big.set('body-length', function (ctx, next) { next(201, { len: JSON.stringify(ctx.req.body).length }); });
     await big.startHTTPServers();
     bigPort = big.httpServersMap.big.server.httpServer.address().port;
+
+    var logs = new ProcessHandler(logSettings);
+    await logs.startHTTPServers();
+    Object.keys(logs.httpServersMap).forEach(function (n) { logPorts[n] = logs.httpServersMap[n].server.httpServer.address().port; });
 
     var passed = 0;
     for (var i = 0; i < cases.length; i++) {
@@ -227,6 +305,7 @@ var cases = [
     console.log(passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));
     ph.httpServersMap.api.server.httpServer.close();
     big.httpServersMap.big.server.httpServer.close();
+    Object.keys(logs.httpServersMap).forEach(function (n) { logs.httpServersMap[n].server.httpServer.close(); });
 })().catch(function (err) {
     console.error(err);
     process.exit(1);

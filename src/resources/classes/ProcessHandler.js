@@ -84,7 +84,7 @@ export class ProcessHandler {
     
     _attachHTTPServer (name, serverSettings) {
         // Init server
-        var server = new ExpressServer({ bodyParser: serverSettings.bodyParser });
+        var server = new ExpressServer({ bodyParser: serverSettings.bodyParser, logger: serverSettings.logger });
         this.httpServersMap[name] = {}
         this.httpServersMap[name].settings = serverSettings;
         this.httpServersMap[name].server = server;
