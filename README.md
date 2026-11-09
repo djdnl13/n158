@@ -121,8 +121,33 @@ some typos as bytes (`'1 megabyte'` becomes 1 byte). If `limit` points to a `$va
 set, the 100kb default applies. Other keys under `json` / `urlencoded` are passed to
 body-parser as they are.
 
+### Request logging
+
+Without `logger`, each server logs requests with `morgan('dev')`, as before:
+`GET /api/x 200 4.123 ms - 15`.
+
+```yaml
+httpServers:
+    -   name: 'server'
+        logger:
+            format: 'dev'      # dev (default), combined, common, short, tiny, or a format string
+            timestamp: true    # prefix each line with the request start time in UTC
+```
+
+```
+[2026-11-09T21:48:03.512Z] GET /api/x 200 4.123 ms - 15
+```
+
+- `timestamp: true` adds the time the request arrived, in UTC (ISO 8601, `Z`), whatever the
+  server's time zone is.
+- A custom `format` is a [morgan](https://github.com/expressjs/morgan#tokens) format string
+  and can use the `:start-utc` token, e.g. `':start-utc :method :url :status'`.
+- `logger: false` turns request logging off.
+- An unknown format name (`'combind'`) or a non-boolean `timestamp` stops the server from
+  starting; morgan would otherwise print the typo as every log line.
+
 Built-in server behavior: gzip compression, JSON and urlencoded bodies (100kb unless set as
-above), cookies, `morgan('dev')` request logging, `Access-Control-Allow-Origin: *`
+above), cookies, request logging (`morgan('dev')` unless set as above), `Access-Control-Allow-Origin: *`
 on every response, `OPTIONS` answered with `200 OK`, and no `X-Powered-By` header.
 
 ### Known limitations
@@ -168,5 +193,7 @@ npm run compile    # src/resources -> classes/, services/, http-pipeline-handler
 - Add `npm test` and CI.
 - Add `bodyParser.json` / `bodyParser.urlencoded` per server in the settings to set body size
   limits (default unchanged: 100kb).
+- Add `logger` per server in the settings: format, `timestamp: true` for the request time in
+  UTC, or `false` to turn logging off (default unchanged: `morgan('dev')`).
 - Remove the unused `services/connectMySQL.js`, which required `mysql`, a package that wasn't
   a dependency.
