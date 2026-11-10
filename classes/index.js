@@ -1,17 +1,27 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.ProcessHandler = exports.MongoModel = exports.ExpressServer = undefined;
-
-var _ExpressServer = require('./ExpressServer');
-
-var _MongoModel = require('./MongoModel');
-
-var _ProcessHandler = require('./ProcessHandler');
-
-exports.ExpressServer = _ExpressServer.ExpressServer;
-exports.MongoModel = _MongoModel.MongoModel;
-exports.ProcessHandler = _ProcessHandler.ProcessHandler;
+Object.defineProperty(exports, "ExpressServer", {
+  enumerable: true,
+  get: function () {
+    return _ExpressServer.ExpressServer;
+  }
+});
+Object.defineProperty(exports, "MongoModel", {
+  enumerable: true,
+  get: function () {
+    return _MongoModel.MongoModel;
+  }
+});
+Object.defineProperty(exports, "ProcessHandler", {
+  enumerable: true,
+  get: function () {
+    return _ProcessHandler.ProcessHandler;
+  }
+});
+var _ExpressServer = require("./ExpressServer");
+var _MongoModel = require("./MongoModel");
+var _ProcessHandler = require("./ProcessHandler");
 //# sourceMappingURL=index.js.map

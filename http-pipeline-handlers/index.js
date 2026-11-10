@@ -1,15 +1,14 @@
-'use strict';
+"use strict";
 
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.modelMongoTransaction = undefined;
-
-var _mongoModelTransaction = require('./mongo-model-transaction');
-
-var _mongoModelTransaction2 = _interopRequireDefault(_mongoModelTransaction);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-exports.modelMongoTransaction = _mongoModelTransaction2.default;
+Object.defineProperty(exports, "modelMongoTransaction", {
+  enumerable: true,
+  get: function () {
+    return _mongoModelTransaction.default;
+  }
+});
+var _mongoModelTransaction = _interopRequireDefault(require("./mongo-model-transaction"));
+function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
 //# sourceMappingURL=index.js.map

@@ -1,0 +1,21 @@
+# Used by test/http-pipeline.test.js: per-server body-parser limits set from settings.yaml.
+vars:
+    jsonLimit: '1mb'
+
+httpServers:
+    -   name: 'big'
+        ports:
+            http: 0
+        bodyParser:
+            json:
+                limit: '$jsonLimit'
+            urlencoded:
+                limit: '200kb'
+        routers:
+            -   name: 'r'
+                path: '/api'
+                routes:
+                    -   method: 'POST'
+                        path: '/body'
+                        pipeline:
+                            -   handler: '$body-length'
